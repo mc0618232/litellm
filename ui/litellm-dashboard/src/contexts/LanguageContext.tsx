@@ -2,6 +2,7 @@
 
 import { getLocalStorageItem, setLocalStorageItem } from "@/utils/localStorageUtils";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { startDomTranslation } from "@/i18n/domTranslator";
 import { DEFAULT_LANGUAGE, LANGUAGE_STORAGE_KEY, Language, translate } from "@/i18n/translations";
 
 interface LanguageContextValue {
@@ -37,6 +38,9 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     document.documentElement.lang = language === "zh-TW" ? "zh-Hant-TW" : "en";
   }, [language]);
+
+  // Translate page content that isn't instrumented with t() — see domTranslator.
+  useEffect(() => startDomTranslation(language), [language]);
 
   const setLanguage = useCallback((next: Language) => {
     setLanguageState(next);
