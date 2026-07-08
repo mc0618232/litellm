@@ -11,8 +11,10 @@ import { DownOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/
 import { Tag } from "antd";
 import Link from "next/link";
 import React from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { BlogDropdown } from "./Navbar/BlogDropdown/BlogDropdown";
 import { CommunityEngagementButtons } from "./Navbar/CommunityEngagementButtons/CommunityEngagementButtons";
+import LanguageSwitcher from "./Navbar/LanguageSwitcher";
 import { NAV_PRODUCT_LINK_CLASS } from "./Navbar/navProductLinkClass";
 import { NotificationsBell } from "./Navbar/NotificationsBell/NotificationsBell";
 import UserDropdown from "./Navbar/UserDropdown/UserDropdown";
@@ -33,6 +35,7 @@ const Navbar: React.FC<NavbarProps> = ({
   onToggleSidebar,
 }) => {
   const baseUrl = getProxyBaseUrl();
+  const { t } = useLanguage();
   const proxySettings = useProxySettings(accessToken);
   const { logoUrl } = useTheme();
   const { data: healthData } = useHealthReadinessDetails(accessToken);
@@ -68,7 +71,7 @@ const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={onToggleSidebar}
                 className="mr-2 flex h-9 w-9 items-center justify-center rounded-md text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
-                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                title={sidebarCollapsed ? t("Expand sidebar") : t("Collapse sidebar")}
               >
                 <span className="text-lg">{sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}</span>
               </button>
@@ -135,11 +138,12 @@ const Navbar: React.FC<NavbarProps> = ({
                 rel="noopener noreferrer"
                 className={NAV_PRODUCT_LINK_CLASS}
               >
-                Docs
+                {t("Docs")}
                 {/* Layout parity with Blog chevron — intentional single-level link */}
                 <DownOutlined className="pointer-events-none text-[10px] opacity-0" aria-hidden />
               </a>
               <BlogDropdown />
+              <LanguageSwitcher />
             </nav>
 
             {!hideCommunityLinks && (

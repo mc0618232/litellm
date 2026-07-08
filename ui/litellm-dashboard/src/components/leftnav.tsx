@@ -41,6 +41,7 @@ import {
   rolesAllowedToViewWriteScopedPages,
   rolesWithWriteAccess,
 } from "../utils/roles";
+import { useLanguage } from "@/contexts/LanguageContext";
 import NewBadge from "./common_components/NewBadge";
 import type { Organization } from "./networking";
 import UsageIndicator from "./UsageIndicator";
@@ -65,7 +66,10 @@ interface SidebarProps {
 interface MenuItem {
   key: string;
   page: string;
-  label: string | React.ReactNode;
+  // Plain string so it can double as a translation key; badges are rendered
+  // separately via the `badge` flag.
+  label: string;
+  badge?: "new" | "dot";
   roles?: string[];
   children?: MenuItem[];
   icon?: React.ReactNode;
@@ -100,11 +104,8 @@ const menuGroups: MenuGroup[] = [
       {
         key: "chat",
         page: "chat",
-        label: (
-          <span className="flex items-center gap-2">
-            Chat <NewBadge />
-          </span>
-        ),
+        label: "Chat",
+        badge: "new",
         icon: <CommentOutlined />,
       },
       {
@@ -167,7 +168,7 @@ const menuGroups: MenuGroup[] = [
       {
         key: "policies",
         page: "policies",
-        label: <span className="flex items-center gap-4">Policies</span>,
+        label: "Policies",
         icon: <AuditOutlined />,
         roles: all_admin_roles,
       },
@@ -236,11 +237,8 @@ const menuGroups: MenuGroup[] = [
       {
         key: "projects",
         page: "projects",
-        label: (
-          <span className="flex items-center gap-2">
-            Projects <NewBadge />
-          </span>
-        ),
+        label: "Projects",
+        badge: "new",
         icon: <FolderOutlined />,
         roles: all_admin_roles,
       },
@@ -348,11 +346,8 @@ const menuGroups: MenuGroup[] = [
       {
         key: "settings",
         page: "settings",
-        label: (
-          <span className="flex items-center gap-2">
-            Settings <NewBadge />
-          </span>
-        ),
+        label: "Settings",
+        badge: "new",
         icon: <SettingOutlined />,
         roles: all_admin_roles,
         children: [
@@ -373,14 +368,8 @@ const menuGroups: MenuGroup[] = [
           {
             key: "admin-panel",
             page: "admin-panel",
-            label: (
-              <span className="flex items-center gap-2">
-                Admin Settings{" "}
-                <NewBadge dot>
-                  <span />
-                </NewBadge>
-              </span>
-            ),
+            label: "Admin Settings",
+            badge: "dot",
             icon: <SettingOutlined />,
             roles: all_admin_roles,
           },
@@ -417,6 +406,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   allowVectorStoresForTeamAdmins,
 }) => {
   const { userId, accessToken, userRole } = useAuthorized();
+  const { t } = useLanguage();
   const { data: organizations } = useOrganizations();
   const { data: teams } = useTeams();
 
@@ -434,6 +424,29 @@ const Sidebar: React.FC<SidebarProps> = ({
   // The parent (legacy root page or dashboard layout) owns navigation for both
   // migrated and legacy pages; the sidebar only reports the selected page.
   const navigateToPage = (page: string) => setPage(page);
+
+  // Translate the label and attach the optional "new"/"dot" badge.
+  const renderItemLabel = (item: MenuItem): React.ReactNode => {
+    const text = t(item.label);
+    if (item.badge === "new") {
+      return (
+        <span className="flex items-center gap-2">
+          {text} <NewBadge />
+        </span>
+      );
+    }
+    if (item.badge === "dot") {
+      return (
+        <span className="flex items-center gap-2">
+          {text}{" "}
+          <NewBadge dot>
+            <span />
+          </NewBadge>
+        </span>
+      );
+    }
+    return text;
+  };
 
   // Wrap label in <a> so every nav item supports right-click → "Open in new tab"
   // and Ctrl/Cmd+click to open in a new tab, while preserving SPA navigation for normal clicks.
@@ -569,17 +582,17 @@ const Sidebar: React.FC<SidebarProps> = ({
               marginBottom: "2px",
             }}
           >
-            {group.groupLabel}
+            {t(group.groupLabel)}
           </span>
         ),
         children: filteredItems.map((item) => ({
           key: item.key,
           icon: item.icon,
-          label: renderNavLink(item.label, item.page, item.external_url),
+          label: renderNavLink(renderItemLabel(item), item.page, item.external_url),
           children: item.children?.map((child) => ({
             key: child.key,
             icon: child.icon,
-            label: renderNavLink(child.label, child.page, child.external_url),
+            label: renderNavLink(renderItemLabel(child), child.page, child.external_url),
             onClick: () => {
               if (child.external_url) {
                 window.open(child.external_url, "_blank");

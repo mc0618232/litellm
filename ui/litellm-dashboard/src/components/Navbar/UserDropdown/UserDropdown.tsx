@@ -10,6 +10,7 @@ import {
   setLocalStorageItem,
 } from "@/utils/localStorageUtils";
 import { navAccountDisplayName } from "@/components/Navbar/navDisplayName";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   CrownOutlined,
   DownOutlined,
@@ -63,6 +64,7 @@ interface UserDropdownProps {
 
 const UserDropdown: React.FC<UserDropdownProps> = ({ onLogout }) => {
   const { userId, userEmail, userRole, premiumUser } = useAuthorized();
+  const { t } = useLanguage();
   const disableShowPrompts = useDisableShowPrompts();
   const disableUsageIndicator = useDisableUsageIndicator();
   const disableBlogPosts = useDisableBlogPosts();
@@ -80,7 +82,7 @@ const UserDropdown: React.FC<UserDropdownProps> = ({ onLogout }) => {
       label: (
         <Space>
           <LogoutOutlined />
-          Logout
+          {t("Logout")}
         </Space>
       ),
       onClick: onLogout,
@@ -96,11 +98,11 @@ const UserDropdown: React.FC<UserDropdownProps> = ({ onLogout }) => {
         </Space>
         {premiumUser ? (
           <Tag icon={<CrownOutlined />} color="gold">
-            Premium
+            {t("Premium")}
           </Tag>
         ) : (
-          <Tooltip title="Upgrade to Premium for advanced features" placement="left">
-            <Tag icon={<CrownOutlined />}>Standard</Tag>
+          <Tooltip title={t("Upgrade to Premium for advanced features")} placement="left">
+            <Tag icon={<CrownOutlined />}>{t("Standard")}</Tag>
           </Tooltip>
         )}
       </Space>
@@ -108,7 +110,7 @@ const UserDropdown: React.FC<UserDropdownProps> = ({ onLogout }) => {
       <Space style={{ width: "100%", justifyContent: "space-between" }}>
         <Space>
           <UserOutlined />
-          <Text type="secondary">User ID</Text>
+          <Text type="secondary">{t("User ID")}</Text>
         </Space>
         <Text copyable ellipsis style={{ maxWidth: "150px" }} title={userId || "-"}>
           {userId || "-"}
@@ -117,13 +119,13 @@ const UserDropdown: React.FC<UserDropdownProps> = ({ onLogout }) => {
       <Space style={{ width: "100%", justifyContent: "space-between" }}>
         <Space>
           <SafetyOutlined />
-          <Text type="secondary">Role</Text>
+          <Text type="secondary">{t("Role")}</Text>
         </Space>
         <Text>{userRole}</Text>
       </Space>
       <Divider style={{ margin: "8px 0" }} />
       <Space style={{ width: "100%", justifyContent: "space-between" }}>
-        <Text type="secondary">Hide New Feature Indicators</Text>
+        <Text type="secondary">{t("Hide New Feature Indicators")}</Text>
         <Switch
           size="small"
           checked={disableShowNewBadge}
@@ -141,7 +143,7 @@ const UserDropdown: React.FC<UserDropdownProps> = ({ onLogout }) => {
         />
       </Space>
       <Space style={{ width: "100%", justifyContent: "space-between" }}>
-        <Text type="secondary">Hide All Prompts</Text>
+        <Text type="secondary">{t("Hide All Prompts")}</Text>
         <Switch
           size="small"
           checked={disableShowPrompts}
@@ -158,7 +160,7 @@ const UserDropdown: React.FC<UserDropdownProps> = ({ onLogout }) => {
         />
       </Space>
       <Space style={{ width: "100%", justifyContent: "space-between" }}>
-        <Text type="secondary">Hide Usage Indicator</Text>
+        <Text type="secondary">{t("Hide Usage Indicator")}</Text>
         <Switch
           size="small"
           checked={disableUsageIndicator}
@@ -175,7 +177,7 @@ const UserDropdown: React.FC<UserDropdownProps> = ({ onLogout }) => {
         />
       </Space>
       <Space style={{ width: "100%", justifyContent: "space-between" }}>
-        <Text type="secondary">Hide Blog Posts</Text>
+        <Text type="secondary">{t("Hide Blog Posts")}</Text>
         <Switch
           size="small"
           checked={disableBlogPosts}
@@ -192,7 +194,7 @@ const UserDropdown: React.FC<UserDropdownProps> = ({ onLogout }) => {
         />
       </Space>
       <Space style={{ width: "100%", justifyContent: "space-between" }}>
-        <Text type="secondary">Hide Bouncing Icon</Text>
+        <Text type="secondary">{t("Hide Bouncing Icon")}</Text>
         <Switch
           size="small"
           checked={disableBouncingIcon}
