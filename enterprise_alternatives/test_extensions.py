@@ -297,11 +297,142 @@ def test_audit_logger():
         check("audit: mgmt changed_by", mgmt["changed_by"] == "admin@example.com")
 
 
+# --------------------------------------------------------------------------- #
+# 5. Management-plane audit middleware (pure ASGI)
+# --------------------------------------------------------------------------- #
+def _run_asgi(mw, method, path, body: bytes, status: int, scope_state=None, downstream_seen=None):
+    """Drive a pure-ASGI middleware with a one-shot body and a fake downstream app."""
+    scope = {
+        "type": "http",
+        "method": method,
+        "path": path,
+        "query_string": b"foo=bar",
+        "headers": [],
+        "client": ("10.1.2.3", 5555),
+        "state": scope_state or {},
+    }
+
+    async def receive():
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    # fake downstream: read the full body via the (possibly wrapped) receive,
+    # then emit a normal response.
+    async def downstream(scope, rcv, snd):
+        chunks = b""
+        while True:
+            msg = await rcv()
+            if msg["type"] == "http.request":
+                chunks += msg.get("body", b"")
+                if not msg.get("more_body"):
+                    break
+        if downstream_seen is not None:
+            downstream_seen["body"] = chunks
+        await snd({"type": "http.response.start", "status": status, "headers": []})
+        await snd({"type": "http.response.body", "body": b"{}"})
+
+    mw.app = downstream
+    run(mw(scope, receive, send))
+    return sent
+
+
+def test_management_audit_middleware():
+    import importlib
+    import tempfile
+
+    tmp = tempfile.mkdtemp()
+    path = os.path.join(tmp, "audit.jsonl")
+    os.environ["AUDIT_LOG_PATH"] = path
+    os.environ["AUDIT_LOG_TO_DB"] = "false"
+
+    # reload sink + middleware so they pick up the temp path
+    from enterprise_alternatives import audit_logger
+
+    importlib.reload(audit_logger)
+    from enterprise_alternatives import management_audit_middleware as mw_mod
+
+    importlib.reload(mw_mod)
+
+    def read_records():
+        if not os.path.exists(path):
+            return []
+        with open(path, encoding="utf-8") as fh:
+            return [json.loads(x) for x in fh if x.strip()]
+
+    # --- non-management route passes through untouched, no record --- #
+    mw = mw_mod.ManagementAuditMiddleware(app=None)
+    seen = {}
+    body = b'{"model":"gpt-4","messages":[]}'
+    _run_asgi(mw, "POST", "/chat/completions", body, 200, downstream_seen=seen)
+    check("mw: llm route body reaches downstream intact", seen.get("body") == body)
+    check("mw: llm route produces no audit record", len(read_records()) == 0)
+
+    # --- management mutation: POST /key/generate --- #
+    principal = type(
+        "P",
+        (),
+        {
+            "user": type("U", (), {"user_id": "admin-1", "user_email": "admin@x.io"})(),
+            "subject": "admin-1",
+            "credential_ref": type("C", (), {"token_id": "hash-xyz"})(),
+        },
+    )()
+    seen = {}
+    kbody = json.dumps({"team_id": "team-7", "api_key": "sk-super-secret", "models": ["gpt-4"]}).encode()
+    _run_asgi(
+        mw,
+        "POST",
+        "/key/generate",
+        kbody,
+        200,
+        scope_state={"principal": principal},
+        downstream_seen=seen,
+    )
+    check("mw: mgmt route body still reaches downstream", seen.get("body") == kbody)
+    recs = read_records()
+    rec = recs[-1] if recs else None
+    check("mw: mgmt mutation emits a record", rec is not None)
+    if rec:
+        check("mw: action=created", rec["action"] == "created", detail=str(rec["action"]))
+        check("mw: table mapped", rec["table_name"] == "LiteLLM_VerificationToken", detail=rec["table_name"])
+        check("mw: object_id from body", rec["object_id"] == "team-7", detail=str(rec["object_id"]))
+        check("mw: actor user id", rec["changed_by"] == "admin-1")
+        check("mw: actor key hash", rec["changed_by_api_key"] == "hash-xyz")
+        check("mw: status captured", rec["status_code"] == 200 and rec["success"] is True)
+        check("mw: client ip captured", rec["client_ip"] == "10.1.2.3")
+        check(
+            "mw: secret redacted in updated_values",
+            "sk-super-secret" not in (rec["updated_values"] or "")
+            and "redacted" in (rec["updated_values"] or ""),
+        )
+
+    # --- DELETE derives 'deleted' --- #
+    _run_asgi(mw, "POST", "/key/delete", json.dumps({"keys": ["sk-1"]}).encode(), 200)
+    recs = read_records()
+    check("mw: delete route -> deleted", recs[-1]["action"] == "deleted", detail=recs[-1]["action"])
+
+    # --- failure status recorded as unsuccessful --- #
+    _run_asgi(mw, "POST", "/team/new", json.dumps({"team_id": "t9"}).encode(), 400)
+    recs = read_records()
+    check("mw: 4xx -> success False", recs[-1]["success"] is False)
+    check("mw: team object_id", recs[-1]["object_id"] == "t9")
+
+    # --- GET (read) on management route is NOT audited --- #
+    before = len(read_records())
+    _run_asgi(mw, "GET", "/key/list", b"", 200)
+    check("mw: GET read not audited", len(read_records()) == before)
+
+
 def main():
     test_signatures()
     test_jwt_auth()
     test_sso_mapping()
     test_audit_logger()
+    test_management_audit_middleware()
     print("\n" + "=" * 50)
     if _failures:
         print(f"FAILED: {len(_failures)} check(s): {_failures}")

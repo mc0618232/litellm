@@ -7,7 +7,8 @@ open-source proxy.
 
 | Module | Replaces | Extension point |
 |---|---|---|
-| `audit_logger.py` | Enterprise Audit Logs | `litellm_settings.callbacks` (CustomLogger) |
+| `audit_logger.py` | Enterprise Audit Logs (request-plane) | `litellm_settings.callbacks` (CustomLogger) |
+| `management_audit_middleware.py` + `audit_asgi_app.py` | Enterprise Audit Logs (management-plane) | composed ASGI middleware (no core edit) |
 | `custom_jwt_auth.py` | Enterprise JWT/OAuth API auth | `general_settings.custom_auth` |
 | `custom_sso_claim_mapping.py` | SSO role/group mapping | `custom_ui_sso_sign_in_handler` |
 
@@ -25,8 +26,9 @@ python -m pytest enterprise_alternatives/test_extensions.py -q
 ```
 
 The suite verifies every entrypoint matches the LiteLLM base signature and
-exercises JWT accept/reject paths, SSO group→role precedence, and audit record
-shape. Last run: **37/37 checks passed**.
+exercises JWT accept/reject paths, SSO group→role precedence, audit record shape,
+and the management-audit middleware (pass-through for LLM routes, capture +
+redaction for management mutations). Last run: **53/53 checks passed**.
 
 ---
 
@@ -77,6 +79,49 @@ WHERE record_type='management_audit' AND payload->>'table_name' LIKE '%Verificat
 ```
 
 Failures in the audit sink are swallowed and printed — they never break a request.
+
+### 1b. Management-plane audit (key/team/model CRUD)
+
+The built-in management audit (the data behind the UI **Audit Logs** page) is
+gated behind `premium_user` — see
+`litellm/proxy/management_helpers/audit_logs.py:208`, which returns early on the
+open-source proxy so the `LiteLLM_AuditLog` table (and therefore the UI page)
+stays empty. This project does **not** patch that gate.
+
+Instead, `management_audit_middleware.py` reconstructs an equivalent trail at the
+ASGI layer and writes it to the same sink as above. Run the proxy through the
+composed app instead of the `litellm` CLI:
+
+```bash
+export CONFIG_FILE_PATH=/app/config.yaml
+export AUDIT_LOG_PATH=/var/log/litellm/audit.jsonl
+export AUDIT_CAPTURE_BODY=true   # capture (secret-redacted) request body; set false for metadata-only
+uvicorn enterprise_alternatives.audit_asgi_app:app --host 0.0.0.0 --port 4000
+```
+
+What it records (one `record_type: management_audit`, `source: middleware` row per
+mutation): actor (`changed_by`, `changed_by_api_key` from the auth-seam Principal),
+`action` (created/updated/deleted/blocked/rotated/…), `table_name`, `object_id`,
+HTTP `method`/`route`/`status_code`/`success`, `client_ip`, and the
+secret-redacted `updated_values`.
+
+Guarantees:
+* **LLM and streaming routes are never touched** — the middleware no-ops before
+  wrapping receive/send for any non-management or non-mutating request.
+* Request body is buffered only for matched management mutations, capped at 64 KiB,
+  and re-served to the downstream handler intact.
+* `api_key` / `secret` / `password` / `token` fields are redacted before writing.
+* Audit failures are swallowed; a response is never blocked.
+
+> This does not repopulate the UI **Audit Logs** page (that page reads the
+> license-gated `LiteLLM_AuditLog` table via an Enterprise endpoint). Query the
+> JSONL file or the `litellm_audit_log` table instead:
+> ```sql
+> SELECT payload->>'logged_at', payload->>'changed_by', payload->>'action',
+>        payload->>'table_name', payload->>'object_id', payload->>'status_code'
+> FROM litellm_audit_log
+> WHERE record_type='management_audit' ORDER BY id DESC;
+> ```
 
 ---
 

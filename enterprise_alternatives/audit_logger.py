@@ -130,6 +130,14 @@ class AuditLogger(CustomLogger):
         await self._emit(record)
 
     # ------------------------------------------------------------------ #
+    # Public sink — reusable by other extensions (e.g. the management-plane
+    # audit middleware) so every audit record lands in the same file/table.
+    # ------------------------------------------------------------------ #
+    async def emit(self, record: Dict[str, Any]) -> None:
+        """Write one audit record to every configured sink. Never raises."""
+        await self._emit(record)
+
+    # ------------------------------------------------------------------ #
     # Sinks
     # ------------------------------------------------------------------ #
     async def _emit(self, record: Dict[str, Any]) -> None:
