@@ -131,3 +131,4 @@ crash.*.log
 .coverage
 
 ui/litellm-dashboard/out/
+.venv_test/
